@@ -1,113 +1,337 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="row">
-    <div class="col-md-4 mb-4">
-        <div class="card p-3 shadow-sm border-start border-4 {% if current_user.is_activated %}border-success{% else %}border-danger{% endif %}">
-            <h5>Status: {% if current_user.is_activated %}<span class="text-success">Active Node</span>{% else %}<span class="text-danger">Inactive</span>{% endif %}</h5>
-            <p class="text-muted small">Referral Link: <br><code>{{ request.host_url }}register?ref={{ current_user.referral_code }}</code></p>
-            {% if not current_user.is_activated %}
-                <form action="{{ url_for('activate_account') }}" method="POST">
-                    <button type="submit" class="btn btn-danger w-100">💥 Activate via M-Pesa STK (Dummy)</button>
-                </form>
-            {% endif %}
+
+<style>
+    .nav-tabs .nav-link {
+        color: #495057;
+        font-weight: 500;
+        border: none;
+        padding: 12px 20px;
+        transition: all 0.2s ease;
+    }
+    .nav-tabs .nav-link.active {
+        color: #0d6efd !important;
+        border-bottom: 3px solid #0d6efd;
+        background: transparent;
+        font-weight: 600;
+    }
+    .game-card {
+        background: #1a1d24;
+        color: #fff;
+        border-radius: 16px;
+        overflow: hidden;
+    }
+    .multiplier-display {
+        font-size: 3.5rem;
+        font-weight: 800;
+        color: #2ed573;
+        text-shadow: 0 0 15px rgba(46, 213, 115, 0.4);
+    }
+    .multiplier-display.crashed {
+        color: #ff4757;
+        text-shadow: 0 0 15px rgba(255, 71, 87, 0.4);
+    }
+    .share-btn {
+        transition: transform 0.2s;
+    }
+    .share-btn:hover {
+        transform: translateY(-2px);
+    }
+</style>
+
+<div class="container py-2">
+
+    <div class="p-4 mb-4 bg-white rounded-3 shadow-sm border">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h2 class="fw-bold text-dark">Welcome to ⚡ EarnNode Network</h2>
+                <p class="text-muted fs-5">The ultimate decentralized micro-task ecosystem. Earn guaranteed payouts by watching verified telemetry streams, running performance tests, or multiplying your assets securely inside our low-latency gaming infrastructure.</p>
+                <div class="d-flex flex-wrap gap-3 mt-3">
+                    <span class="badge bg-light text-dark border p-2"><i class="bi bi-shield-check text-success"></i> Secured Escrow Payouts</span>
+                    <span class="badge bg-light text-dark border p-2"><i class="bi bi-lightning-charge text-warning"></i> Instant M-Pesa STK Push</span>
+                    <span class="badge bg-light text-dark border p-2"><i class="bi bi-people text-primary"></i> 300 KSH Referral Commission</span>
+                </div>
+            </div>
+            <div class="col-md-4 mt-3 mt-md-0">
+                <div class="p-3 bg-dark text-white rounded-3 text-center shadow">
+                    <span class="text-uppercase small opacity-75 d-block">Node Account Balance</span>
+                    <h2 class="fw-bold my-2 text-warning" id="user-wallet-balance">{{ current_user.balance }} KSH</h2>
+                    {% if not current_user.is_activated %}
+                        <form action="{{ url_for('activate_account') }}" method="POST">
+                            <button type="submit" class="btn btn-danger btn-sm w-100 mt-1"><i class="bi bi-phone"></i> Activate Account via M-Pesa</button>
+                        </form>
+                    {% else %}
+                        <span class="text-success small fw-bold"><i class="bi bi-check-circle-fill"></i> System Node Active</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 p-3 bg-light rounded-3 border">
+            <h6 class="fw-bold mb-2 text-secondary"><i class="bi bi-share-fill me-1"></i> Share Your Node Referral Network</h6>
+            <div class="input-group mb-3">
+                <input type="text" id="refLink" class="form-control bg-white" value="{{ request.host_url }}register?ref={{ current_user.referral_code }}" readonly>
+                <button class="btn btn-outline-secondary" type="button" onclick="copyRefLink()"><i class="bi bi-copy"></i> Copy</button>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="https://api.whatsapp.com/send?text=Join%20EarnNode%20and%20start%20earning%20daily%20rewards!%20Sign%20up%20here:%20{{ request.host_url }}register?ref={{ current_user.referral_code }}" target="_blank" class="btn btn-sm text-white share-btn" style="background: #25D366;"><i class="bi bi-whatsapp"></i> WhatsApp</a>
+                <a href="https://t.me/share/url?url={{ request.host_url }}register?ref={{ current_user.referral_code }}&text=Join%20EarnNode%20and%20earn%20KSH%20daily!" target="_blank" class="btn btn-sm text-white share-btn" style="background: #0088cc;"><i class="bi bi-telegram"></i> Telegram</a>
+                <a href="https://www.facebook.com/sharer/sharer.php?u={{ request.host_url }}register?ref={{ current_user.referral_code }}" target="_blank" class="btn btn-sm text-white share-btn" style="background: #1877F2;"><i class="bi bi-facebook"></i> Facebook</a>
+                <button onclick="copyRefLink()" class="btn btn-sm btn-dark text-white share-btn"><i class="bi bi-tiktok"></i> TikTok/IG Link</button>
+            </div>
         </div>
     </div>
 
-    <div class="col-md-8">
-        <h3>📺 Available Paid Ads</h3>
-        <div class="list-group mb-4">
-            {% for ad in ads %}
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-1">{{ ad.title }}</h6>
-                        <span class="badge bg-success">+{{ ad.reward }} KSH</span>
+    <ul class="nav nav-tabs mb-4 border-bottom" id="platformTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="ads-tab" data-bs-toggle="tab" data-bs-target="#ads" type="button" role="tab"><i class="bi bi-tv"></i> Paid Tasks & Ads</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="arcade-tab" data-bs-toggle="tab" data-bs-target="#arcade" type="button" role="tab"><i class="bi bi-controller"></i> Arcade Arena</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="gigs-tab" data-bs-toggle="tab" data-bs-target="#gigs" type="button" role="tab"><i class="bi bi-briefcase"></i> Escrow Gigs</button>
+        </li>
+    </ul>
+
+    <div class="tab-content text-dark" id="platformTabsContent">
+        
+        <div class="tab-pane fade show active" id="ads" role="tabpanel">
+            <h4 class="fw-bold mb-3">Available Data Stream Tasks</h4>
+            <div class="row g-3">
+                {% for ad in ads %}
+                <div class="col-md-6">
+                    <div class="card p-3 border shadow-sm">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="fw-bold mb-1 text-dark">{{ ad.title }}</h6>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle">+{{ ad.reward }} KSH Payout</span>
+                            </div>
+                            <a href="{{ url_for('watch_ad', ad_id=ad.id) }}" class="btn btn-primary btn-sm px-3 rounded-pill">Initialize Stream</a>
+                        </div>
                     </div>
-                    <a href="{{ url_for('watch_ad', ad_id=ad.id) }}" class="btn btn-sm btn-outline-primary">Watch & Earn</a>
                 </div>
-            {% endfor %}
+                {% endfor %}
+            </div>
         </div>
 
-        <h3>💼 Available Escrow Gigs</h3>
-        {% for job in jobs %}
-            <div class="card mb-3 p-3">
-                <h6>{{ job.title }} <span class="text-success">({{ job.reward }} KSH)</span></h6>
-                <p class="small text-muted">{{ job.description }}</p>
-                {% if job.id in completed_job_ids %}
-                    <button class="btn btn-sm btn-secondary" disabled>Submitted</button>
-                {% else %}
-                    <form action="{{ url_for('submit_job_proof', job_id=job.id) }}" method="POST" enctype="multipart/form-data" class="mt-2">
-                        <div class="mb-2">
-                            <input type="text" name="proof_text" class="form-control form-control-sm" placeholder="Text confirmation notes">
+        <div class="tab-pane fade" id="arcade" role="tabpanel">
+            <div class="row g-4">
+                
+                <div class="col-lg-7">
+                    <div class="game-card card border-0 p-4 shadow-lg text-center position-relative">
+                        <div class="position-absolute top-0 start-0 m-3">
+                            <span class="badge bg-danger rounded-pill px-2 py-1 small">LIVE MODULE</span>
                         </div>
-                        <div class="mb-2">
-                            <input type="file" name="proof_file" class="form-control form-control-sm" accept=".pdf">
+                        <h4 class="fw-bold text-light mb-1 mt-2">📊 Aviator Flight Grid</h4>
+                        <p class="text-muted small">Watch the multiplier climb! Cashout before the telemetry signal drops.</p>
+                        
+                        <div class="bg-black bg-opacity-50 rounded-3 my-4 p-5 border border-secondary border-opacity-25 d-flex flex-column align-items-center justify-content-center" style="min-height: 220px;">
+                            <div id="aviatorLiveMultiplier" class="multiplier-display">1.00x</div>
+                            <div id="aviatorLog" class="text-muted small mt-2">Ready for Engine Spinup</div>
                         </div>
-                        <button type="submit" class="btn btn-sm btn-dark">Submit Verification Proof</button>
-                    </form>
-                {% endif %}
+
+                        <div class="row g-2 max-width-md mx-auto">
+                            <div class="col-sm-6">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-dark border-secondary text-white">Bet KSH</span>
+                                    <input type="number" id="aviatorStake" class="form-control bg-dark border-secondary text-white" value="100" min="10">
+                                </div>
+                            </div>
+                            <div class="col-sm-3 col-6">
+                                <button id="aviatorLaunchBtn" class="btn btn-success w-100 fw-bold py-2 text-uppercase">Launch</button>
+                            </div>
+                            <div class="col-sm-3 col-6">
+                                <button id="aviatorCashoutBtn" class="btn btn-warning w-100 fw-bold py-2 text-dark text-uppercase" disabled>Cashout</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-5">
+                    <div class="card p-4 shadow-sm border border-2 border-primary border-opacity-10 bg-white h-100">
+                        <h4 class="fw-bold text-dark mb-1"><i class="bi bi-coin text-warning"></i> Coinflip Matrix</h4>
+                        <p class="text-muted small">Choose your network vector alignment side to double your staking tokens instantly.</p>
+                        
+                        <div id="coinflipAlert" class="alert alert-info py-2 text-center small d-none"></div>
+
+                        <div class="mb-3 mt-2">
+                            <label class="form-label small fw-bold text-secondary">Vector Allocation Amount</label>
+                            <input type="number" id="coinflipAmount" class="form-control" value="50" min="10">
+                        </div>
+
+                        <label class="form-label small fw-bold text-secondary d-block">Select Predicted Outcome</label>
+                        <div class="row g-2 mb-4">
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="coinSide" id="sideHeads" value="heads" checked>
+                                <label class="btn btn-outline-dark w-100 py-3 fw-bold text-uppercase" for="sideHeads">🪙 Heads</label>
+                            </div>
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="coinSide" id="sideTails" value="tails">
+                                <label class="btn btn-outline-dark w-100 py-3 fw-bold text-uppercase" for="sideTails">🪙 Tails</label>
+                            </div>
+                        </div>
+
+                        <button id="coinflipExecuteBtn" class="btn btn-dark w-100 py-2.5 fw-bold text-uppercase rounded-3"><i class="bi bi-dice-5"></i> Flip System Node</button>
+                    </div>
+                </div>
+
             </div>
-        {% endfor %}
+        </div>
+
+        <div class="tab-pane fade" id="gigs" role="tabpanel">
+            <h4 class="fw-bold mb-3">System Proof Escrow Tasks</h4>
+            <div class="row g-3">
+                {% for job in jobs %}
+                <div class="col-12">
+                    <div class="card p-4 border shadow-sm">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h5 class="fw-bold text-dark mb-1">{{ job.title }}</h5>
+                                <p class="text-muted small mb-2">{{ job.description }}</p>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1.5 fs-7">{{ job.reward }} KSH Escrow Allocation</span>
+                            </div>
+                            <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                                {% if job.id in completed_job_ids %}
+                                    <button class="btn btn-secondary disabled w-100 rounded-pill" disabled><i class="bi bi-lock-fill"></i> Verification Pending</button>
+                                {% else %}
+                                    <button class="btn btn-outline-primary w-100 rounded-pill" data-bs-toggle="collapse" data-bs-target="#proofForm{{ job.id }}">Submit Proof Node</button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="collapse mt-3" id="proofForm{{ job.id }}">
+                            <form action="{{ url_for('submit_job_proof', job_id=job.id) }}" method=\"POST\" enctype="multipart/form-data" class="p-3 bg-light rounded border">
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Verification Context Logs / Notes</label>
+                                    <textarea name="proof_text" rows="2" class="form-control bg-white" placeholder="Provide link address hashes or processing validation array data metrics..."></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Attach Connection Proof Document (PDF Only)</label>
+                                    <input type="file" name="proof_file" class="form-control bg-white" accept=".pdf" required>
+                                </div>
+                                <button type="submit" class="btn btn-success btn-sm px-4">Transmit Payload Proof</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
     </div>
 </div>
-{% endblock %}
-<script>
-let tickPulse = null;
 
-function startAviatorGame() {
-    const stakeVal = document.getElementById('aviatorStake').value;
-    
+<script>
+// Utilities: Copy Referral Links
+function copyRefLink() {
+    const copyText = document.getElementById("refLink");
+    copyText.select();
+    copyText.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(copyText.value);
+    alert("Referral node linkage copied to clip buffer successfully!");
+}
+
+// 🛫 Aviator Interactive Game Controller Logic Loop
+let aviatorPulseInterval = null;
+
+function executeAviatorLaunch() {
+    const stakeInput = document.getElementById('aviatorStake').value;
+    const logBox = document.getElementById('aviatorLog');
+    const displayMult = document.getElementById('aviatorLiveMultiplier');
+
+    displayMult.classList.remove('crashed');
+    logBox.innerText = "Transmitting stake authorization code...";
+
     fetch('/api/aviator/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stake: stakeVal })
+        body: JSON.stringify({ stake: stakeInput })
     })
     .then(res => res.json())
     .then(data => {
         if (!data.success) {
-            document.getElementById('aviatorLog').innerText = data.message;
+            logBox.innerText = data.message;
             return;
         }
         
+        // Update live balance display values on page layout seamlessly
         document.getElementById('user-wallet-balance').innerText = data.new_balance.toFixed(2) + " KSH";
         document.getElementById('aviatorLaunchBtn').disabled = true;
         document.getElementById('aviatorCashoutBtn').disabled = false;
-        document.getElementById('aviatorLog').innerText = "Plane flying... Cash out before the crash!";
+        logBox.innerText = "Plane in flight! Cashout before signal disruption vector.";
         
-        // Start polling the state tick route every 250ms
-        tickPulse = setInterval(pollAviatorTick, 250);
+        // Initiate state tracking loops with the restful server API
+        aviatorPulseInterval = setInterval(pollAviatorTelemetryTick, 200);
     });
 }
 
-function pollAviatorTick() {
+function pollAviatorTelemetryTick() {
     fetch('/api/aviator/tick', { method: 'POST' })
     .then(res => res.json())
     .then(data => {
         if (data.status === "flying") {
             document.getElementById('aviatorLiveMultiplier').innerText = data.multiplier + "x";
         } else if (data.status === "crashed") {
-            clearInterval(tickPulse);
+            clearInterval(aviatorPulseInterval);
             document.getElementById('aviatorLaunchBtn').disabled = false;
             document.getElementById('aviatorCashoutBtn').disabled = true;
-            document.getElementById('aviatorLiveMultiplier').innerText = "💥 " + data.crash_point + "x";
-            document.getElementById('aviatorLog').innerText = "Plane burst!";
+            
+            const displayMult = document.getElementById('aviatorLiveMultiplier');
+            displayMult.classList.add('crashed');
+            displayMult.innerText = "💥 " + data.crash_point + "x";
+            document.getElementById('aviatorLog').innerText = "Signal Burst! Allocation plane dropped.";
         }
     });
 }
 
 document.getElementById('aviatorCashoutBtn').addEventListener('click', function() {
-    clearInterval(tickPulse);
+    clearInterval(aviatorPulseInterval);
+    const logBox = document.getElementById('aviatorLog');
     
     fetch('/api/aviator/cashout', { method: 'POST' })
     .then(res => res.json())
     .then(data => {
         document.getElementById('aviatorLaunchBtn').disabled = false;
         document.getElementById('aviatorCashoutBtn').disabled = true;
-        document.getElementById('aviatorLog').innerText = data.message;
+        logBox.innerText = data.message;
+        
         if (data.success) {
             document.getElementById('user-wallet-balance').innerText = data.new_balance.toFixed(2) + " KSH";
         }
     });
 });
 
-document.getElementById('aviatorLaunchBtn').addEventListener('click', startAviatorGame);
+document.getElementById('aviatorLaunchBtn').addEventListener('click', executeAviatorLaunch);
+
+// 🪙 Coinflip Binary Arcade Action API Caller
+document.getElementById('coinflipExecuteBtn').addEventListener('click', function() {
+    const alertBox = document.getElementById('coinflipAlert');
+    const stakeAmount = document.getElementById('coinflipAmount').value;
+    const chosenAlignment = document.querySelector('input[name="coinSide"]:checked').value;
+
+    alertBox.classList.remove('d-none', 'alert-success', 'alert-danger');
+    alertBox.classList.add('alert-info');
+    alertBox.innerText = "Spinning array variables...";
+
+    fetch('/play/coinflip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bet_amount: stakeAmount, chosen_side: chosenAlignment })
+    })
+    .then(res => res.json())
+    .then(data => {
+        alertBox.classList.remove('alert-info');
+        if (data.success) {
+            alertBox.classList.add('alert-success');
+            alertBox.innerText = data.message;
+            document.getElementById('user-wallet-balance').innerText = data.new_balance.toFixed(2) + " KSH";
+        } else {
+            alertBox.classList.add('alert-danger');
+            alertBox.innerText = data.message;
+        }
+    });
+});
 </script>
+
+{% endblock %}
