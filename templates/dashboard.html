@@ -50,3 +50,64 @@
     </div>
 </div>
 {% endblock %}
+<script>
+let tickPulse = null;
+
+function startAviatorGame() {
+    const stakeVal = document.getElementById('aviatorStake').value;
+    
+    fetch('/api/aviator/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stake: stakeVal })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.success) {
+            document.getElementById('aviatorLog').innerText = data.message;
+            return;
+        }
+        
+        document.getElementById('user-wallet-balance').innerText = data.new_balance.toFixed(2) + " KSH";
+        document.getElementById('aviatorLaunchBtn').disabled = true;
+        document.getElementById('aviatorCashoutBtn').disabled = false;
+        document.getElementById('aviatorLog').innerText = "Plane flying... Cash out before the crash!";
+        
+        // Start polling the state tick route every 250ms
+        tickPulse = setInterval(pollAviatorTick, 250);
+    });
+}
+
+function pollAviatorTick() {
+    fetch('/api/aviator/tick', { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "flying") {
+            document.getElementById('aviatorLiveMultiplier').innerText = data.multiplier + "x";
+        } else if (data.status === "crashed") {
+            clearInterval(tickPulse);
+            document.getElementById('aviatorLaunchBtn').disabled = false;
+            document.getElementById('aviatorCashoutBtn').disabled = true;
+            document.getElementById('aviatorLiveMultiplier').innerText = "💥 " + data.crash_point + "x";
+            document.getElementById('aviatorLog').innerText = "Plane burst!";
+        }
+    });
+}
+
+document.getElementById('aviatorCashoutBtn').addEventListener('click', function() {
+    clearInterval(tickPulse);
+    
+    fetch('/api/aviator/cashout', { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById('aviatorLaunchBtn').disabled = false;
+        document.getElementById('aviatorCashoutBtn').disabled = true;
+        document.getElementById('aviatorLog').innerText = data.message;
+        if (data.success) {
+            document.getElementById('user-wallet-balance').innerText = data.new_balance.toFixed(2) + " KSH";
+        }
+    });
+});
+
+document.getElementById('aviatorLaunchBtn').addEventListener('click', startAviatorGame);
+</script>
