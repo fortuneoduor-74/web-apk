@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card p-3 shadow-sm border-start border-4 {% if current_user.is_activated %}border-success{% else %}border-danger{% endif %}">
+            <h5>Status: {% if current_user.is_activated %}<span class="text-success">Active Node</span>{% else %}<span class="text-danger">Inactive</span>{% endif %}</h5>
+            <p class="text-muted small">Referral Link: <br><code>{{ request.host_url }}register?ref={{ current_user.referral_code }}</code></p>
+            {% if not current_user.is_activated %}
+                <form action="{{ url_for('activate_account') }}" method="POST">
+                    <button type="submit" class="btn btn-danger w-100">💥 Activate via M-Pesa STK (Dummy)</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <h3>📺 Available Paid Ads</h3>
+        <div class="list-group mb-4">
+            {% for ad in ads %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">{{ ad.title }}</h6>
+                        <span class="badge bg-success">+{{ ad.reward }} KSH</span>
+                    </div>
+                    <a href="{{ url_for('watch_ad', ad_id=ad.id) }}" class="btn btn-sm btn-outline-primary">Watch & Earn</a>
+                </div>
+            {% endfor %}
+        </div>
+
+        <h3>💼 Available Escrow Gigs</h3>
+        {% for job in jobs %}
+            <div class="card mb-3 p-3">
+                <h6>{{ job.title }} <span class="text-success">({{ job.reward }} KSH)</span></h6>
+                <p class="small text-muted">{{ job.description }}</p>
+                {% if job.id in completed_job_ids %}
+                    <button class="btn btn-sm btn-secondary" disabled>Submitted</button>
+                {% else %}
+                    <form action="{{ url_for('submit_job_proof', job_id=job.id) }}" method="POST" enctype="multipart/form-data" class="mt-2">
+                        <div class="mb-2">
+                            <input type="text" name="proof_text" class="form-control form-control-sm" placeholder="Text confirmation notes">
+                        </div>
+                        <div class="mb-2">
+                            <input type="file" name="proof_file" class="form-control form-control-sm" accept=".pdf">
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-dark">Submit Verification Proof</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
