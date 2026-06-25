@@ -1,7 +1,3 @@
-# 👑 CRITICAL FOR EVENTLET: Monkey patch MUST be the absolute first two lines of execution!
-import eventlet
-eventlet.monkey_patch()
-
 import os
 import secrets
 import random  
@@ -13,7 +9,6 @@ from flask import Flask, render_template, redirect, url_for, request, flash, ses
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename 
-from flask_socketio import SocketIO, emit 
 
 from models import db, User, Ad, Job, JobSubmission
 
@@ -26,7 +21,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['REMEMBER_COOKIE_HTTPONLY'] = True
 
-# 👑 DATABASE SELECTION ENGINE: Supports Render Postgres or scales down to SQLite smoothly
+# 👑 DATABASE SELECTION ENGINE
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     'DATABASE_URL', 
     'sqlite:///' + os.path.join(app.instance_path, 'platform.db') + '?timeout=30'
@@ -44,11 +39,8 @@ app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
 ADMIN_USERNAME = os.environ.get('DEFAULT_ADMIN_USER', 'fabian')
 ADMIN_EMAIL = os.environ.get('DEFAULT_ADMIN_EMAIL', 'fortuneoduor@gmail.com')
 
-# 🛡️ RENDERING THREAD PROTECTION: Built-in pool prevents HTTP gateway request timeouts
+# Simple thread pool for background tasks (like the dummy webhook simulation)
 bg_executor = ThreadPoolExecutor(max_workers=2)
-
-# 🛫 WEBSOCKET INITIALIZER: Left dynamic for Eventlet runtime binding auto-detection
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -122,10 +114,10 @@ def register():
         ref_by = request.form.get('ref')
         
         if len(password) < 8:
-            flash('Registration failed: Password string must be at least 8 characters long.', 'danger')
+            flash('Registration failed: Password must be at least 8 characters.', 'danger')
             return redirect(url_for('register'))
         if User.query.filter_by(username=username).first() or User.query.filter_by(email=email).first():
-            flash('Registration failed: User credentials matching configuration already mapped.', 'danger')
+            flash('Registration failed: Username or Email already exists.', 'danger')
             return redirect(url_for('register'))
             
         try:
@@ -167,7 +159,7 @@ def dashboard():
     return render_template('dashboard.html', ads=Ad.query.all(), jobs=Job.query.all(), completed_job_ids=[s.job_id for s in JobSubmission.query.filter_by(user_id=current_user.id).all()])
 
 # ==============================================================================
-# 📲 SANDBOXED M-PESA DARAJA WEBHOOK HANDLER
+# 📲 SANDBOXED M-PESA HANDLER
 # ==============================================================================
 def simulate_mpesa_daraja_webhook(app_context, user_id):
     time.sleep(4) 
@@ -191,7 +183,7 @@ def activate_account():
     if current_user.is_activated:
         return redirect(url_for('dashboard'))
     bg_executor.submit(simulate_mpesa_daraja_webhook, app.app_context(), current_user.id)
-    flash('📲 Lipa Na M-PESA STK Push Sim Sent! Enter any dummy PIN string. Simulating verification...', 'info')
+    flash('📲 M-PESA STK Push Sent! Simulating verification...', 'info')
     return redirect(url_for('dashboard'))
 
 @app.route('/api/v1/mpesa/check-status')
@@ -220,7 +212,7 @@ def claim_reward(ad_id):
         user_db = db.session.query(User).filter(User.id == current_user.id).with_for_update().first()
         user_db.balance += target_ad.reward
         db.session.commit()
-        flash(f'Successfully claimed {target_ad.reward} KSH view payout.', 'success')
+        flash(f'Successfully claimed {target_ad.reward} KSH.', 'success')
     except Exception:
         db.session.rollback()
     return redirect(url_for('dashboard'))
@@ -256,61 +248,82 @@ def play_coinflip():
         return jsonify({"success": False, "message": "Database busy."})
 
 # ==============================================================================
-# AVIATOR WEB-SOCKET CONTROLLER
+# 🛫 AVIATOR ENGINE (CONVERTED TO STANDARD HTTP REST ENDPOINTS)
 # ==============================================================================
-active_flights = {}
-
-@socketio.on('join_aviator')
-def on_join(data):
-    user_id = data.get('user_id')
-    if not user_id: return
-    if user_id in active_flights: active_flights[user_id]['active'] = False
-    
-    crash_point = 1.00 if random.random() < 0.12 else round(1.01 + (0.05 / (1.0 - random.uniform(0.01, 0.98))**1.35), 2)
-    if crash_point > 40.0: crash_point = 40.0
-    
-    active_flights[user_id] = {
-        'crash_point': crash_point, 'start_time': time.time(), 'active': True, 'stake': round(float(data.get('stake', 0)), 2)
-    }
-    emit('flight_started', {'status': 'launched'})
-
-@socketio.on('request_multiplier_tick')
-def on_tick(data):
-    user_id = data.get('user_id')
-    flight = active_flights.get(user_id)
-    if not flight or not flight['active']: return
-    
-    elapsed = time.time() - flight['start_time']
-    current_mult = round(1.00 + (elapsed * 0.15), 2)
-    
-    if current_mult >= flight['crash_point']:
-        flight['active'] = False
-        emit('flight_crashed', {'crash_point': flight['crash_point']})
-    else:
-        emit('tick_update', {'multiplier': current_mult})
-
-@socketio.on('claim_cashout')
-def on_cashout(data):
-    user_id = data.get('user_id')
-    flight = active_flights.get(user_id)
-    if not flight or not flight['active']: return
-    
-    flight['active'] = False
-    elapsed = time.time() - flight['start_time']
-    final_mult = round(1.00 + (elapsed * 0.15), 2)
-    
-    if final_mult >= flight['crash_point']:
-        emit('cashout_result', {'success': False, 'message': 'Too late! Plane burst.'})
-        return
-        
-    winnings = round(flight['stake'] * final_mult, 2)
+@app.route('/api/aviator/join', methods=['POST'])
+@login_required
+def aviator_join():
+    data = request.get_json() or {}
     try:
-        user_db = db.session.query(User).filter(User.id == int(user_id)).with_for_update().first()
-        user_db.balance += winnings
+        stake = round(float(data.get('stake', 0)), 2)
+    except ValueError:
+        return jsonify({"success": False, "message": "Invalid stake format."})
+
+    if stake <= 0 or current_user.balance < stake:
+        return jsonify({"success": False, "message": "Insufficient balance."})
+
+    # Deduct stake upfront to prevent exploits
+    try:
+        user_db = db.session.query(User).filter(User.id == current_user.id).with_for_update().first()
+        user_db.balance -= stake
         db.session.commit()
-        emit('cashout_result', {'success': True, 'winnings': winnings, 'new_balance': float(user_db.balance), 'message': f"🛫 Clean Cashout at {final_mult}x! Earned {winnings} KSH."})
     except Exception:
         db.session.rollback()
+        return jsonify({"success": False, "message": "Database error."})
+
+    crash_point = 1.00 if random.random() < 0.12 else round(1.01 + (0.05 / (1.0 - random.uniform(0.01, 0.98))**1.35), 2)
+    if crash_point > 40.0: crash_point = 40.0
+
+    session['aviator_game'] = {
+        'crash_point': crash_point,
+        'start_time': time.time(),
+        'stake': stake,
+        'active': True
+    }
+    return jsonify({"success": True, "status": "launched", "new_balance": float(user_db.balance)})
+
+@app.route('/api/aviator/tick', methods=['POST'])
+@login_required
+def aviator_tick():
+    game = session.get('aviator_game')
+    if not game or not game.get('active'):
+        return jsonify({"status": "inactive"})
+
+    elapsed = time.time() - game['start_time']
+    current_mult = round(1.00 + (elapsed * 0.15), 2)
+
+    if current_mult >= game['crash_point']:
+        game['active'] = False
+        session['aviator_game'] = game
+        return jsonify({"status": "crashed", "crash_point": game['crash_point']})
+    
+    return jsonify({"status": "flying", "multiplier": current_mult})
+
+@app.route('/api/aviator/cashout', methods=['POST'])
+@login_required
+def aviator_cashout():
+    game = session.get('aviator_game')
+    if not game or not game.get('active'):
+        return jsonify({"success": False, "message": "No active game found."})
+
+    game['active'] = False
+    session['aviator_game'] = game
+
+    elapsed = time.time() - game['start_time']
+    final_mult = round(1.00 + (elapsed * 0.15), 2)
+
+    if final_mult >= game['crash_point']:
+        return jsonify({"success": False, "message": "Too late! The plane crashed."})
+
+    winnings = round(game['stake'] * final_mult, 2)
+    try:
+        user_db = db.session.query(User).filter(User.id == current_user.id).with_for_update().first()
+        user_db.balance += winnings
+        db.session.commit()
+        return jsonify({"success": True, "winnings": winnings, "new_balance": float(user_db.balance), "message": f"🛫 Cashed out at {final_mult}x! Earned {winnings} KSH."})
+    except Exception:
+        db.session.rollback()
+        return jsonify({"success": False, "message": "Database error processing cashout."})
 
 # ==============================================================================
 # ESCROW MODULE & ADMINISTRATION PANEL
@@ -392,4 +405,4 @@ def download_proof(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
