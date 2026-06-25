@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="text-center">
+    <h3>Streaming: {{ ad.title }}</h3>
+    <div class="ratio ratio-16x9 my-4 mx-auto" style="max-width: 650px;">
+        <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" allowfullscreen></iframe>
+    </div>
+    <form action="{{ url_for('claim_reward', ad_id=ad.id) }}" method="POST">
+        <button type="submit" class="btn btn-success btn-lg">💰 Click to Claim {{ ad.reward }} KSH</button>
+    </form>
+</div>
+{% endblock %}
